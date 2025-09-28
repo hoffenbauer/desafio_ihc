@@ -10,8 +10,6 @@ import shapely
 
 from pandas.api.types import is_datetime64_any_dtype as is_datetime
 
-alt.renderers.set_embed_options(format_locale="pt_BR", time_format_locale="pt_BR")
-
 # fmt: off
 CODIGOS_ESTADOS = {
     "AC": 12, "AL": 27, "AP": 16, "AM": 13, "BA": 29, "CE": 23, "DF": 53, "ES": 32,
@@ -65,7 +63,6 @@ def cria_mapa_geodataframe(
     ).add_to(m)
 
     return m
-
 
 def transforma_colunas_datetime_para_string(
     gdf: gpd.GeoDataFrame, cols: list[str], formato: str = "%d/%m/%Y"
@@ -191,3 +188,24 @@ def json_municipios(ufs: list[str] | str) -> gpd.GeoDataFrame:
     municipios["geometry"] = shapely.make_valid(municipios["geometry"])
 
     return municipios
+
+def obtem_centroide(pontos: list[shapely.Point] | gpd.GeoSeries) -> tuple[float, float]:
+    """Calcula o centroide de um conjunto de pontos.
+
+    Args:
+        pontos (list[shapely.Point]|gpd.GeoSeries[shapely.Point]): Conjunto de pontos.
+
+    Returns:
+        tuple[float, float]: Coordenadas (latitude, longitude) do centroide.
+    """
+    if isinstance(pontos, gpd.GeoSeries) and not all(
+        isinstance(p, shapely.Point) for p in pontos
+    ):
+        raise TypeError("GeoSeries deve conter apenas objetos Point.")
+
+    if pontos.empty:
+        raise ValueError("A série de pontos está vazia.")
+    from shapely.geometry import Polygon
+
+    poly = Polygon([point for point in pontos])
+    return poly.convex_hull.centroid.coords[0][::-1]
