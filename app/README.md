@@ -13,7 +13,7 @@ Aplicação web em Streamlit para explorar coletas de poluentes por estado, cida
 
 ## 📁 Estrutura do projeto
 
-```
+```bash
 .
 ├── data/
 │ ├── coletas.db # Banco SQLite gerado automaticamente
