@@ -16,6 +16,7 @@ CODIGOS_ESTADOS = {
 }
 # fmt: on
 
+
 def obtem_centroide(pontos: list[shapely.Point] | gpd.GeoSeries) -> tuple[float, float]:
     """Calcula o centroide de um conjunto de pontos.
 

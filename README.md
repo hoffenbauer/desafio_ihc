@@ -12,7 +12,11 @@ Aplicação web em Streamlit para explorar coletas de poluentes por estado, cida
 - Camada de utilitários para UI, SQL e constantes para reduzir duplicações e manter o código limpo
 
 ## 📁 Estrutura do projeto
+<<<<<<< HEAD
 
+=======
+```
+>>>>>>> 25305fc00ca1f8607a08fe1065e3ae35224fc882
 .
 ├── data/
 │ ├── coletas.db # Banco SQLite gerado automaticamente
