@@ -1,0 +1,13 @@
+__pycache__/
+.venv/
+.test/
+.idea/
+.vscode/
+settings.json
+.gitignore
+*.pyc
+.DS_Store
+*.log
+.env
+
+*.in

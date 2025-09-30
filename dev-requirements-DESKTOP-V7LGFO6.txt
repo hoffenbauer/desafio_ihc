@@ -7,6 +7,7 @@
 altair==5.5.0
     # via
     #   -r dev-requirements.in
+    #   -r requirements.in
     #   streamlit
 annotated-types==0.7.0
     # via pydantic
@@ -70,6 +71,7 @@ filelock==3.19.1
 folium==0.20.0
     # via
     #   -r dev-requirements.in
+    #   -r requirements.in
     #   leafmap
 fonttools==4.60.0
     # via matplotlib
@@ -293,7 +295,9 @@ scipy==1.16.2
 scooby==0.10.2
     # via leafmap
 shapely==2.1.2
-    # via geopandas
+    # via
+    #   -r requirements.in
+    #   geopandas
 six==1.17.0
     # via python-dateutil
 smmap==5.0.2
@@ -305,7 +309,9 @@ stack-data==0.6.3
 statsmodels==0.14.5
     # via plotly-express
 streamlit==1.50.0
-    # via -r dev-requirements.in
+    # via
+    #   -r dev-requirements.in
+    #   -r requirements.in
 tenacity==9.1.2
     # via streamlit
 toml==0.10.2
@@ -347,6 +353,8 @@ tzdata==2025.2
     # via pandas
 urllib3==2.5.0
     # via requests
+vl-convert-python==1.8.0
+    # via -r dev-requirements.in
 watchdog==6.0.0
     # via streamlit
 wcwidth==0.2.14
