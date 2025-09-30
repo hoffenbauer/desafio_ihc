@@ -1,128 +1,180 @@
+# Visualização Interativa de Poluentes (Streamlit + GeoPandas + Folium)
 
-# 🧭 Desafio Técnico IHC – Especialista em Python e Geoprocessamento (GIS)
+Aplicação web em Streamlit para explorar coletas de poluentes por estado, cidade, estação e poluente. O app constrói um banco SQLite a partir de um arquivo Parquet e exibe um mapa interativo com marcadores e um gráfico temporal por estação.
 
-Este repositório contém os arquivos de apoio para o desafio técnico.  
+## ✨ Principais recursos
 
-O objetivo é gerar um **mapa interativo em HTML (offline)** a partir de um conjunto de dados ambientais fornecido em formato CSV.
+- Filtros dinâmicos em cascata (Estados → Cidades → Estações → Poluentes)
+- Opção para incluir coletas oceânicas (linhas com state/city = "N/A")
+- Mapa Folium interativo com marcadores clicáveis por estação
+- Gráfico temporal Altair por estação (seleção via clique no mapa ou seletor)
+- Cache de dados e consultas para melhor desempenho (`st.cache_data`)
+- Camada de utilitários para UI, SQL e constantes para reduzir duplicações e manter o código limpo
 
----
-
-## 📂 Estrutura de arquivos
+## 📁 Estrutura do projeto
 
 ```
 .
 ├── data/
-│   └── dados_exemplo_poluentes_no_acentos.csv   # Arquivo de entrada
+│ ├── coletas.db # Banco SQLite gerado automaticamente
+│ ├── pontos_coleta_municipios_longo.parquet # Fonte dos dados (entrada)
+│ └── ...
 ├── maps/
-│   └── mapa.html                                # Saída esperada (gerada pelo candidato)
+│ └── ... # (opcional) mapas HTML pré-gerados
 ├── src/
-│   └── map.py                                   # Script principal a ser desenvolvido
-├── requirements.txt                             # Dependências para instalação via pip
-├── pyproject.toml                               # Dependências para instalação via Poetry
+│ ├── app.py # App Streamlit principal
+│ ├── map.ipynb # Notebook de exploração/prototipagem
+│ ├── mapa_poluentes.html # Exemplo de mapa HTML pré-gerado
+│ ├── paths.py # Caminhos para DB e Parquet
+│ └── utils/
+│ ├── constants.py # Rótulos e valores de domínio (ex.: poluentes, N/A)
+│ ├── data.py # Helpers p/ datas/locale Altair e merges com GeoPandas
+│ ├── db.py # Criação do banco e queries (cidades, estações, coletas)
+│ ├── geo.py # Criação de mapas Folium e funções geográficas
+│ ├── plots.py # Gráficos Altair (linha e boxplot)
+│ ├── sql.py # Helpers SQL: placeholders, seleção efetiva, cláusulas
+│ └── ui.py # Wrappers de UI (pills/multiselect) e mensagens
+├── requirements.in # Lista de alto nível das dependências
+├── requirements.txt # Dependências resolvidas e versionadas (pip-compile)
 └── README.md
+
 ```
 
----
+## 🗃️ Dados e esquema esperado
 
-## 📑 Dados de entrada
+A aplicação parte de um arquivo Parquet, definido em `src/paths.py`:
 
-O arquivo `dados_exemplo_poluentes_no_acentos.csv` contém:
+- `PARQUET_PATH = data/pontos_coleta_municipios_longo.parquet`
+- `DB_PATH = data/coletas.db`
 
-- **station_id** → Identificador da estação  
-- **station_name** → Nome da estação (sem acentuação)  
-- **lat, lon** → Coordenadas em WGS84 (EPSG:4326)  
-- **sample_dt** → Data da coleta (YYYY-MM-DD)  
-- **pol_a, pol_b** → Concentrações de dois poluentes (mg/L)  
-- **unit** → Unidade das concentrações (mg/L)  
+Na primeira execução/import do módulo `utils/db.py`, o banco SQLite é criado a partir do Parquet (função `cria_banco_sqlite`) e índices úteis são adicionados (`state`, `city`, `station_name`). As chamadas seguintes se beneficiam de cache via `@st.cache_data`.
 
-Exemplo:
+Colunas esperadas em `coletas` (sensíveis ao app):
 
-```csv
-station_id,station_name,lat,lon,sample_dt,pol_a,pol_b,unit
-101,Estacao A1,-22.901,-43.172,2025-08-01,4.0,0.9,mg/L
-205,Estacao B1,-22.512,-43.737,2025-07-15,0.7,2.6,mg/L
-...
+- `state` (TEXT) — UF, ex.: "RJ", "SP"; coletas oceânicas usam `"N/A"`
+- `city` (TEXT) — nome da cidade; oceânicas usam `"N/A"`
+- `station_name` (TEXT)
+- `lat` (REAL), `lon` (REAL)
+- `sample_dt` (DATE/TEXT) — data/hora da coleta
+- `pollutant` (TEXT) — ex.: `pol_a`, `pol_b`
+- `value` (REAL) — valor do poluente medido em mg/L
+- `unit` (TEXT, opcional)
+
+Valores e rótulos especiais:
+
+- `N/A` (constante `NA_VALUE` em `utils/constants.py`) para coletas sem cidade/estado
+- Rótulos amigáveis de poluente: ver `POLUENTES_ROTULO`/`POLUENTES_ROTULO_REVERSO`
+
+## 🚀 Como executar
+
+Pré-requisitos:
+
+- Python 3.12+
+- Ambiente virtual recomendado
+
+Passos típicos (Windows/PowerShell):
+
+```powershell
+# 1) Criar e ativar ambiente virtual
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 2) Instalar dependências
+pip install -r requirements.txt
+
+# 3) Garanta que o Parquet existe em data/pontos_coleta_municipios_longo.parquet
+# 4) Rodar o app
+streamlit run src/app.py
 ```
 
----
+Na primeira execução, o banco `data/coletas.db` será gerado automaticamente a partir do Parquet.
 
-## 🎯 Objetivo
+## 🧭 Uso da interface
 
-Gerar `maps/mapa.html` com:
+- Sidebar
 
-1. **Camada de concentração (mini-barras)**  
-   - Cada estação representada por um ícone customizado (SVG/DivIcon) com duas barras coloridas (pol_a e pol_b).  
-   - Tooltip no hover exibindo informações da estação e valores.  
+  - Estados (pills multi-seleção): por padrão, todos os estados disponíveis
+  - Cidades: aparece após escolher estados; por padrão, todas as cidades disponíveis
+  - Estações: após cidades; por padrão, todas as estações disponíveis
+  - Poluentes (pills): rótulos amigáveis mapeados para `pol_a`/`pol_b`
+  - Incluir coletas oceânicas? (checkbox): adiciona linhas onde `state=city='N/A'`
 
-2. **Camada de heatmap**  
-   - Heatmap de pol_a (ou pol_b se preferir, mas justifique).  
+- Painel principal
+  - Métrica com o número de coletas filtradas
+  - Mapa Folium (clique em um marcador para selecionar a estação)
+  - Seletor de estação (fallback) e gráfico Altair (série temporal por estação)
 
-3. **Controle de camadas**  
-   - Permitir ligar/desligar a camada de concentração e a camada de heatmap.  
+Regras de seleção:
 
-### Parte 2 – Bônus (opcional)
+- Se uma seleção ficar vazia em um nível (ex.: nenhuma cidade marcada), o app considera “todas disponíveis” daquele nível (normalização centralizada em `utils/sql.py::efetiva_selecao`).
+- Oceânicas: quando ativo, adiciona um OR para `(state='N/A' AND city='N/A' AND pollutant IN (...))`.
 
-- Clusterização com ícone de mini-barras mostrando as **medianas** de pol_a e pol_b.  
-- Tooltip do cluster com número de pontos, medianas e intervalo de datas.  
-- Outros extras úteis (responsividade, exportação em GeoJSON, destaques visuais).
+## 🧩 Principais módulos e responsabilidades
 
-   ```
+- `utils/db.py`
 
-## 📦 Dependências sugeridas
+  - `cria_banco_sqlite`: cria/popula o SQLite a partir do Parquet e cria índices
+  - `obtem_dados_unicos(coluna)`: valores distintos por coluna (ex.: estados)
+  - `busca_cidades(estados)`, `busca_estacoes(cidades)`, `busca_poluentes(...)`
+  - `busca_coletas(sql, params)`: retorna DataFrame resultante da consulta
 
-### requirements.txt
-```txt
-folium==0.16.0
-pandas==2.2.2
-numpy==1.26.4
-branca==0.7.2
-geopandas==1.0.1
-```
+- `utils/sql.py`
 
-### pyproject.toml (Poetry)
-```toml
-[tool.poetry]
-name = "desafio-mapas"
-version = "0.1.0"
-description = "Desafio técnico: Especialista em Python e Geoprocessamento (GIS)"
-authors = ["Seu nome e email"]
-readme = "README.md"
-packages = [{ include = "src" }]
+  - `placeholders(n)`: monta `?, ?, ?` para o SQLite3
+  - `efetiva_selecao(selecao, padrao)`: usa “todas disponíveis” quando vazio
+  - `clausula_in(coluna, valores)`: retorna `"coluna IN (...)"` e params
+  - `monta_filtro_terrestre(estados, cidades, estacoes, poluentes)`
 
-[tool.poetry.dependencies]
-python = ">=3.8,<3.12"
-folium = "0.16.0"
-pandas = "2.2.2"
-numpy = "1.26.4"
-branca = "0.7.2"
-geopandas = "1.0.1"
+- `utils/constants.py`
 
----
+  - `NA_VALUE = "N/A"`, `POLUENTES_ROTULO`, `POLUENTES_ROTULO_REVERSO`
 
-## 📦 Entrega esperada
+- `utils/ui.py`
 
-O(a) candidato(a) deve entregar:
+  - `pills_multi`, `multiselect_full_default`: wrappers de UI padronizados
+  - `info_if`, `warn_if`: mensagens condicionais
 
-- `src/map.py` → Script principal  
-- `maps/mapa.html` → Arquivo HTML obrigatório para validação rápida do resultado 
-- `README.md` → Instruções de uso  
-- Dependências em `pyproject.toml` (Poetry) ou `requirements.txt`
+- `utils/geo.py`
 
-## 📦 Forma de entrega
+  - `cria_mapa(gdf)`: mapa Folium com marcadores; usa centróide dos pontos
+  - `json_municipios(ufs)`: baixa GeoJSON de municípios (útil para camadas adicionais)
+  - `cria_mapa_com_graficos`: exemplo de popup com gráfico Altair
 
-- Preferencial: repositório GitHub contendo todos os arquivos.
-- Alternativa: arquivo ZIP com a mesma estrutura de pastas.
-- ENVIAR resultados para o e-mail vagas@ihc.com.br
-- PRAZO: 29/09/2025 as 12:00 (meio-dia)
+- `utils/plots.py`
 
----
+  - `cria_grafico(df)`: linha temporal (Data vs. valor) por poluente
+  - `cria_boxplot(df)`: distribuição por poluente (log-transform opcional)
 
-## 🔎 Avaliação
+- `utils/data.py`
+  - `transforma_colunas_datetime_para_string`: utilitário leve p/ datetimes
+  - `carrega_locale_altair("pt-BR")`: localidade para eixos/formatos em Altair
 
-- Funcionalidade essencial: mapa offline, barras embutidas, tooltips, heatmap  
-- Qualidade visual e UX: clareza, legenda, organização, criatividade  
-- Código e reprodutibilidade: clareza, README, dependências  
-- Bônus: clusterização com medianas, extras úteis  
+## 🔧 Considerações de performance
 
+- Índices no SQLite: `state`, `city`, `station_name` (considere adicionar `pollutant`)
+- Cache de consultas: `@st.cache_data` reduz leituras/joins repetidos
+- Mapa Folium: para conjuntos muito grandes, considere `FastMarkerCluster` ou GeoJSON com `folium.GeoJson`
+- Gráficos Altair: filtrar por estação reduz a carga no navegador
 
----
+## 🧪 Desenvolvimento e qualidade
+
+- Tipagem leve nos utilitários principais para facilitar manutenção
+- Separação de responsabilidades (UI, SQL, DB, geo, plots)
+- Observação: `utils/db.py` hoje exibe mensagens no sidebar ao importar (efeito colateral).
+
+## 🐛 Solução de problemas (Windows)
+
+- Erros ao instalar GeoPandas/pyogrio/pyproj/shapely:
+  - Use as versões fixadas em `requirements.txt`
+  - Caso necessário, use wheels precompilados (por exemplo, Christoph Gohlke)
+- Banco não é criado
+  - Verifique se `data/pontos_coleta_municipios_longo.parquet` existe e tem as colunas esperadas
+- Mapa vazio ou sem lat/lon
+  - O app exibe um mapa padrão se `lat`/`lon` não estiverem presentes no DataFrame filtrado
+- Gráfico não aparece
+  - A seleção deve conter `sample_dt`, `value` e `pollutant` para plotagem
+
+## 🗺️ Materiais auxiliares
+
+- `src/map.ipynb`: notebook de prototipagem (ex.: alternativas ao `iterrows`, GeoJSON, FastMarkerCluster)
+- `src/mapa_poluentes.html`: exemplo de mapa HTML gerado offline (não é utilizado diretamente pelo app)
