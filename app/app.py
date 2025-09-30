@@ -3,6 +3,14 @@ import geopandas as gpd
 import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
+import sys
+from pathlib import Path
+
+# Garante que app/src esteja no sys.path para permitir imports de utils e paths
+APP_ROOT = Path(__file__).resolve().parent
+APP_SRC = APP_ROOT / "src"
+if str(APP_SRC) not in sys.path:
+    sys.path.insert(0, str(APP_SRC))
 
 from paths import DB_PATH as db_path
 from utils.constants import NA_VALUE, POLUENTES_ROTULO, POLUENTES_ROTULO_REVERSO
