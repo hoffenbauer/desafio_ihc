@@ -1,3 +1,6 @@
+"""Funções utilitárias para conexão e consulta de dados em SQLite."""
+
+
 import streamlit as st
 import pandas as pd
 import sqlite3

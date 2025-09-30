@@ -1,5 +1,8 @@
+"""Funções utilitárias para criação de gráficos interativos usando Altair."""
+
 import altair as alt
-from utils.utils import carrega_locale_altair
+from utils.data import carrega_locale_altair
+import numpy as np
 
 locale = carrega_locale_altair("pt-BR")
 
@@ -24,4 +27,30 @@ def cria_grafico(df):
         )
         .configure(locale=locale)
     ).add_params()
+    return chart
+
+
+def cria_boxplot(df):
+    # Verifica se as colunas necessárias existem
+    df["value"] = np.round(np.log(df["value"] + 1), 2)
+    df["pollutant"] = df["pollutant"].replace({"pol_a": "A", "pol_b": "B"})
+    chart = (
+        (
+            alt.Chart(df)
+            .mark_boxplot(size=70, extent=0.5)
+            .encode(
+                x=alt.X("pollutant:N", title="Poluente"),
+                y=alt.Y(
+                    "value:Q", title="Valor medido (ln mg/L)", scale=alt.Scale(base=2)
+                ),
+                color=alt.Color("pollutant:N", legend=None),
+            )
+        )
+        .properties(
+            width=500,  # ⬅ aumente conforme necessário
+            height=500,
+            title="Distribuição dos valores por poluente",
+        )
+        .configure(locale=locale)
+    )
     return chart

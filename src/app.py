@@ -1,19 +1,24 @@
+import folium
+import geopandas as gpd
+import pandas as pd
 import streamlit as st
+from streamlit_folium import st_folium
 
+from paths import DB_PATH as db_path
+from utils.constants import NA_VALUE, POLUENTES_ROTULO, POLUENTES_ROTULO_REVERSO
 from utils.db import (
+    busca_cidades,
+    busca_coletas,
+    busca_estacoes,
+    busca_poluentes,
     cria_banco_sqlite,
     obtem_dados_unicos,
-    busca_cidades,
-    busca_estacoes,
-    busca_coletas,
-    busca_poluentes,
 )
-from paths import DB_PATH as db_path
-import geopandas as gpd
 from utils.geo import cria_mapa
-from utils.plots import cria_grafico
-from streamlit_folium import st_folium
-import folium
+from utils.plots import cria_boxplot, cria_grafico
+from utils.sql import efetiva_selecao, monta_filtro_terrestre, placeholders
+from utils.ui import avisa_se, informa_se, multiselecao_todos_padrao, pills_multi
+
 
 # -------------------------
 # Configurações iniciais
@@ -39,41 +44,31 @@ incluir_coletas_oceanicas = st.sidebar.checkbox(
 # --- Estados ---
 ufs = obtem_dados_unicos(db_path, "state")
 
-estados_opcoes = ufs
-estados_val = st.sidebar.pills(
+estados_val = pills_multi(
     label="Selecione os estados",
     options=ufs,
     default=ufs,
     key="pills_estados",
-    selection_mode="multi",
 )
-# Estados efetivos para consulta
-if not estados_val:
-    estados_para_busca = ufs
-else:
-    estados_para_busca = estados_val
+# Estados efetivos para consulta (se vazio, usa todos)
+estados_para_busca = efetiva_selecao(estados_val, ufs)
 
 # --- Cidades (dependente dos estados) ---
 if estados_val:  # Só mostra o seletor de cidades se ao menos um estado for selecionado
     cidades_disponiveis = busca_cidades(db_path, estados_para_busca)
-    cidades_opcoes = cidades_disponiveis
-    cidades_val = st.sidebar.multiselect(
-        "Selecione as cidades",
-        cidades_opcoes,
-        default=cidades_opcoes,
-        key="cidades",
+    cidades_val = multiselecao_todos_padrao(
+        "Selecione as cidades", cidades_disponiveis, key="cidades"
     )
 else:
-    st.sidebar.info("Por favor, selecione pelo menos um estado.")
+    informa_se(True, "Por favor, selecione pelo menos um estado.")
     cidades_val = []
 
 # Cidades efetivas para consulta
-if cidades_val:
-    cidades_para_busca = cidades_val
-else:
-    cidades_para_busca = (
-        cidades_disponiveis if "cidades_disponiveis" in locals() else []
-    )
+cidades_para_busca = (
+    efetiva_selecao(cidades_val, cidades_disponiveis)
+    if "cidades_disponiveis" in locals()
+    else []
+)
 
 # --- Estações (dependente das cidades) ---
 estacoes_val = []
@@ -81,103 +76,66 @@ if (
     cidades_val
 ):  # Só mostra o seletor de estações se ao menos uma cidade for selecionada
     estacoes_disponiveis = busca_estacoes(db_path, cidades_para_busca)
-    estacoes_opcoes = estacoes_disponiveis
-    estacoes_val = st.sidebar.multiselect(
-        "Selecione as estações",
-        estacoes_opcoes,
-        default=estacoes_opcoes,
-        key="estacoes",
+    estacoes_val = multiselecao_todos_padrao(
+        "Selecione as estações", estacoes_disponiveis, key="estacoes"
     )
 elif cidades_val == [] and estados_val:
-    st.sidebar.info("Por favor, selecione pelo menos uma cidade.")
+    informa_se(True, "Por favor, selecione pelo menos uma cidade.")
     estacoes_val = []
 
 # --- Poluentes (dependente das estações) ---
-poluentes_rotulo = {"pol_a": "Poluente A", "pol_b": "Poluente B"}
-poluentes_map_reverso = {v: k for k, v in poluentes_rotulo.items()}
 poluentes_val = []
 if (
     estacoes_val or incluir_coletas_oceanicas
 ):  # Só mostra o seletor de poluentes se ao menos uma estação for selecionada
     poluentes_disponiveis = busca_poluentes(db_path, estacoes_val)
-    poluentes_opcoes = [poluentes_rotulo.get(p, p) for p in poluentes_disponiveis]
-    poluentes_val = st.sidebar.pills(
+    poluentes_opcoes = [POLUENTES_ROTULO.get(p, p) for p in poluentes_disponiveis]
+    selecionados = pills_multi(
         "Selecione os poluentes",
         poluentes_opcoes,
         default=poluentes_opcoes,
-        selection_mode="multi",
         key="poluentes",
     )
-    poluentes_val = [poluentes_map_reverso.get(p, p) for p in poluentes_val]
+    poluentes_val = [POLUENTES_ROTULO_REVERSO.get(p, p) for p in selecionados]
 elif cidades_val == [] and estados_val:
     estacoes_val = []
 elif estacoes_val == [] and cidades_val:
-    st.sidebar.info("Por favor, selecione pelo menos uma estação.")
+    informa_se(True, "Por favor, selecione pelo menos uma estação.")
 
 # -------------------------
 # Estrutura da consulta
 # -------------------------
 coletas = []
 if estados_val and cidades_val and estacoes_val and poluentes_val:
-    # Conta os elementos para a query
-    estados_cont = len(estados_val)
-    cidades_cont = len(cidades_val)
-    estacoes_cont = len(estacoes_val)
-    poluentes_cont = len(poluentes_val)
+    # Seleções efetivas (se vazio, usa todas as disponíveis em cada nível)
+    estados_ok = efetiva_selecao(estados_val, ufs)
+    cidades_ok = efetiva_selecao(cidades_val, cidades_disponiveis)
+    estacoes_ok = efetiva_selecao(estacoes_val, estacoes_disponiveis)
+    poluentes_ok = efetiva_selecao(poluentes_val, poluentes_disponiveis)
 
-    # Se não houver seleção, usa todas as opções disponíveis
-    if estados_cont == 0:
-        estados_val = ufs
-        estados_cont = len(ufs)
-    estados_sql = ",".join(["?"] * estados_cont)
-
-    if cidades_cont == 0:
-        cidades_val = cidades_disponiveis
-        cidades_cont = len(cidades_disponiveis)
-    cidades_sql = ",".join(["?"] * cidades_cont)
-
-    if estacoes_cont == 0:
-        estacoes_val = estacoes_disponiveis
-        estacoes_cont = len(estacoes_disponiveis)
-    estacoes_sql = ",".join(["?"] * estacoes_cont)
-
-    if poluentes_cont == 0:
-        poluentes_val = poluentes_disponiveis
-        poluentes_cont = len(poluentes_disponiveis)
-    poluentes_sql = ",".join(["?"] * poluentes_cont)
-
-    # Monta a query SQL para coletas terrestres
-    query_terrestre = f"""
-    (state IN ({estados_sql})
-    AND city IN ({cidades_sql})
-    AND station_name IN ({estacoes_sql})
-    AND pollutant IN ({poluentes_sql}))
-    """
-    params = [*estados_val, *cidades_val, *estacoes_val, *poluentes_val]
+    # Monta filtro terrestre e params
+    filtro_terrestre, params = monta_filtro_terrestre(
+        estados_ok, cidades_ok, estacoes_ok, poluentes_ok
+    )
 
     if incluir_coletas_oceanicas:
-        if estados_val == []:
-            sql_query = "SELECT * FROM coletas WHERE state = 'N/A' AND city = 'N/A' AND pollutant IN ('pol_a', 'pol_b')"
-        # Adiciona a condição para coletas oceânicas
-        query_oceanica = (
-            f"OR (state = 'N/A' AND city = 'N/A' AND pollutant IN ({poluentes_sql}))"
-        )
-        sql_query = f"SELECT * FROM coletas WHERE {query_terrestre} {query_oceanica}"
-        # Adiciona os poluentes novamente aos parâmetros para a parte oceânica da query
-        params.extend(poluentes_val)
+        pol_sql = placeholders(len(poluentes_ok))
+        query_oceanica = f" OR (state = '{NA_VALUE}' AND city = '{NA_VALUE}' AND pollutant IN ({pol_sql}))"
+        sql_query = f"SELECT * FROM coletas WHERE {filtro_terrestre}{query_oceanica}"
+        params = [*params, *poluentes_ok]
     else:
-        sql_query = f"SELECT * FROM coletas WHERE {query_terrestre}"
+        sql_query = f"SELECT * FROM coletas WHERE {filtro_terrestre}"
 
     # Executa a query
     coletas = busca_coletas(db_path, sql_query, params)
-    # TODO REVIEW
 elif (poluentes_val == [] and estacoes_val) or (
     incluir_coletas_oceanicas is False and poluentes_val == []
 ):
-    st.sidebar.info("Por favor, selecione pelo menos um poluente.")
+    informa_se(True, "Por favor, selecione pelo menos um poluente.")
 elif (estados_val == []) and (incluir_coletas_oceanicas is False):
-    st.warning(
-        "Por favor, selecione pelo menos um estado para iniciar ou inclua coletas oceânicas."
+    avisa_se(
+        True,
+        "Por favor, selecione pelo menos um estado para iniciar ou inclua coletas oceânicas.",
     )
     coletas = []
 
@@ -185,14 +143,14 @@ elif (estados_val == []) and (incluir_coletas_oceanicas is False):
 # -------------------------
 # Painel principal
 # -------------------------
-# Column layout
 col1, col2 = st.columns([2, 1], gap="large")
 
-# Column 1: Metric and Map
+# Coluna 1: Mapa e contagem de registros
 ss = None
 with col1:
-    st.info(f"Número de coletas encontradas: {len(coletas)}")
+    st.sidebar.info(f"Número de coletas: {len(coletas)}")
     st.write("### Mapa das Coletas")
+    st.write("Clique em um ponto no mapa obter mais informações sobre a estação.")
     if len(coletas) > 0:
         try:
             if "lat" in coletas.columns and "lon" in coletas.columns:
@@ -209,8 +167,7 @@ with col1:
                     height=500,
                     returned_objects=["last_object_clicked_tooltip"],
                 )
-                # Debug: Uncomment to inspect click events
-                # st.write("Map Data:", map_data)
+
                 if map_data and map_data.get("last_object_clicked_tooltip"):
                     clicked_station = map_data["last_object_clicked_tooltip"]
                     if (
@@ -227,7 +184,8 @@ with col1:
         except Exception as e:
             st.error(f"Erro ao carregar o mapa: {str(e)}")
 
-# Column 2: Plot
+
+# Coluna 2: Gráfico de coletas
 with col2:
     if len(coletas) > 0:
         if "selected_station" not in st.session_state:
@@ -244,12 +202,59 @@ with col2:
                 ss = selected_station
         if ss:
             sd = coletas[coletas["station_name"] == ss]
+            sd["sample_dt"] = pd.to_datetime(sd["sample_dt"])
 
-            st.write(f"### Histórico de coletas - Estação {ss}")
+            st.write(f"### Estação {ss}")
             if sd["city"].values[0] != "N/A":
                 st.write(f"{sd['city'].values[0]} - {sd['state'].values[0]}")
             if not sd.empty:
                 chart = cria_grafico(sd)
+                bplot = cria_boxplot(sd)
+                st.write("#####  Histórico de coletas")
                 st.altair_chart(chart, use_container_width=True)
+                st.write("#####  Boxplot de coletas")
+                st.altair_chart(bplot, use_container_width=True)
+
+                st.write("##### Informações das coletas")
+                st.write(f"###### Número: {len(sd)}")
+                st.write(
+                    f"###### Data: {sd['sample_dt'].min().date().strftime('%d/%m/%Y')} a {sd['sample_dt'].max().date().strftime('%d/%m/%Y')}"
+                )
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("##### Poluente A")
+                    st.write(
+                        f"###### Média: {sd[sd['pollutant'] == 'A']['value'].mean():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Desvio Padrão: {sd[sd['pollutant'] == 'A']['value'].std():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Mediana: {sd[sd['pollutant'] == 'A']['value'].median():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Mínimo: {sd[sd['pollutant'] == 'A']['value'].min():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Máximo: {sd[sd['pollutant'] == 'A']['value'].max():.2f} mg/L"
+                    )
+                with col2:
+                    st.write("##### Poluente B")
+                    st.write(
+                        f"###### Média: {sd[sd['pollutant'] == 'B']['value'].mean():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Desvio Padrão: {sd[sd['pollutant'] == 'B']['value'].std():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Mediana: {sd[sd['pollutant'] == 'B']['value'].median():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Mínimo: {sd[sd['pollutant'] == 'B']['value'].min():.2f} mg/L"
+                    )
+                    st.write(
+                        f"###### Máximo: {sd[sd['pollutant'] == 'B']['value'].max():.2f} mg/L"
+                    )
+
             else:
                 st.warning("Nenhum dado encontrado para a estação selecionada.")

@@ -1,5 +1,6 @@
-import warnings
+"""Funções utilitárias para manipulação de dados geográficos e criação de mapas interativos."""
 
+import warnings
 import folium
 import geopandas as gpd
 import shapely
@@ -14,7 +15,6 @@ CODIGOS_ESTADOS = {
     "SP": 35, "SE": 28, "TO": 17
 }
 # fmt: on
-
 
 def obtem_centroide(pontos: list[shapely.Point] | gpd.GeoSeries) -> tuple[float, float]:
     """Calcula o centroide de um conjunto de pontos.
@@ -34,7 +34,7 @@ def obtem_centroide(pontos: list[shapely.Point] | gpd.GeoSeries) -> tuple[float,
         raise ValueError("A série de pontos está vazia.")
     from shapely.geometry import Polygon
 
-    poly = Polygon([point for point in pontos])
+    poly = Polygon([[ponto.x, ponto.y] for ponto in pontos])
     return poly.convex_hull.centroid.coords[0][::-1]
 
 
@@ -54,6 +54,13 @@ def cria_mapa(gdf: gpd.GeoDataFrame) -> folium.Map:
 
     centroide = obtem_centroide(pontos=gdf["geometry"])
     m = folium.Map(location=centroide, zoom_start=7)
+
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        attr='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+        name="CartoDB Positron",
+        control=False,
+    ).add_to(m)
 
     for row in gdf.itertuples():
         nome_estacao = row.station_name
@@ -87,6 +94,7 @@ def cria_mapa(gdf: gpd.GeoDataFrame) -> folium.Map:
     return m
 
 
+@lru_cache
 def json_municipios(ufs: list[str] | str) -> gpd.GeoDataFrame:
     """Carrega os dados geográficos dos municípios brasileiros para os estados especificados.
 
