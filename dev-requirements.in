@@ -1,9 +1,0 @@
--r requirements.in
-ipykernel
-altair
-folium
-leafmap
-plotly
-plotly-express
-streamlit
-vl-convert-python
